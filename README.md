@@ -1,5 +1,5 @@
-# FloodPop: High-resolution estimates of the US population living in flood-prone areas
-This repository presents a workflow to create estimates of the US population living in flood-prone areas using classified building footprints and 2020 decennial Census data with confidence intervals.
+# FloodPop: High-resolution estimates of the US population in high flood hazard areas
+This repository presents a workflow to create estimates of the US population living in high flood hazard areas using classified building footprints and 2020 decennial Census data with confidence intervals.
 
 ## Workflow
 1. Download data
@@ -13,7 +13,7 @@ This repository presents a workflow to create estimates of the US population liv
         - The estimated 100-year floodplain ([link](https://www.sciencedirect.com/science/article/pii/S0048969718328481))
 
 2. Classify Overture footprints and fill in any gaps
-    - `classify_overture.ipynb`: Classifies Overture building footprints using other sources. Adds any potentially missed buildings.
+    - `classify_overture.ipynb`: Classifies Overture building footprints as "residential", "not residential", or "unclassified" using other sources. Adds any potentially missed buildings. Tags buildings if they intersect the FEMA Special Flood Hazard Area (SFHA), the [estimated SFHA](https://www.sciencedirect.com/science/article/pii/S0048969718328481), or the footprint of a FEMA study.
 
 3. Validate building footprint classifications and building counts
     - `validate_res_or_not.ipynb`: Classifies local parcel datasets and creates spatially joined feature classes for further analysis in R.
@@ -24,3 +24,6 @@ This repository presents a workflow to create estimates of the US population liv
 
 5. Create FloodPop
     - `create_floodpop.R`: Creates the tabular and geospatial files of FloodPop by merging the building footprint information with census data.
+
+6. Create Figures and Tables
+    - `create_figures.R`: Creates maps and tables for the corresponding manuscript.
