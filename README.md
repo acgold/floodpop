@@ -1,5 +1,5 @@
 # FloodPop: High-resolution estimates of the US population in high flood hazard areas
-![image](https://github.com/user-attachments/assets/730079e8-d974-44ce-9290-e078f7a6c74b)
+[![DOI](https://zenodo.org/badge/952079716.svg)](https://doi.org/10.5281/zenodo.15096915)
 
 This repository presents a workflow to create estimates of the US population living in high flood hazard areas using classified building footprints and 2020 decennial Census data with confidence intervals.
 
