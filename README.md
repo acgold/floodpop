@@ -2,6 +2,8 @@
 This repository presents a workflow to create estimates of the US population living in high flood hazard areas using classified building footprints and 2020 decennial Census data with confidence intervals.
 
 ## Workflow
+Files are within the `code` folder of this repository.
+
 1. Download data
     - `download_mbd.ipynb`: Downloads [Microsoft building footprints (US Release)](https://github.com/microsoft/USBuildingFootprints) by state to an Esri File Geodatabase.
     - `download_overture.ipynb`: Uses DuckDB to download [Overture building footprints](https://overturemaps.org/) by state to an Esri File Geodatabase.
