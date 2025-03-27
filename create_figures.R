@@ -3,10 +3,8 @@ library(classInt)
 library(patchwork)
 library(sf)
 library(tidyverse)
-library(terra)
 library(data.table)
 library(tidycensus)
-library(arrow)
 library(extrafont)
 library(foreach)
 library(extrafont)
@@ -16,9 +14,9 @@ results_path = "your_results_path"
 data_path = "your_path"
 
 ############## Read data ###################
-cart_counties <- sf::st_read(file.path(results_path, "census/cartographic/cartographic.gdb"), layer = "carto_counties")
-cart_states <- sf::st_read(file.path(results_path, "census/cartographic/cartographic.gdb"), layer = "carto_states")
-cart_tracts <- sf::st_read(file.path(results_path, "census/cartographic/cartographic.gdb"), layer = "carto_tracts")
+cart_counties <- sf::st_read(file.path(results_path, "fp_summaries/cartographic.gdb"), layer = "carto_counties_fp")
+cart_states <- sf::st_read(file.path(results_path, "fp_summaries/cartographic.gdb"), layer = "carto_states_fp")
+cart_tracts <- sf::st_read(file.path(results_path, "fp_summaries/cartographic.gdb"), layer = "carto_tracts_fp")
 
 # Define coordinates and close the polygon
 coords <- matrix(c(
@@ -123,7 +121,7 @@ fl_pop_legend_plot <- ggplot(dummy_data) +
 ggsave(file.path(results_path, "figures/miami_pop_plot_legend.eps"), fl_pop_legend_plot,width = 90, height = 90, units = "mm", device = cairo_ps)
 
 ############### Tables ##############
-state_summary_table <- readr::read_csv(file.path(results_path, "census/summaries/state_summary.csv"))
+state_summary_table <- readr::read_csv(file.path(results_path, "fp_summaries/summary_csvs/state_summary.csv"))
 state_summary <- state_summary_table  %>% 
   summarize_if(.predicate = is.numeric, .funs = sum)
 
@@ -131,19 +129,19 @@ state_summary <- state_summary_table  %>%
 factorial_table <- tibble(
   Category = c("Total", "SFHA", "Best-available SFHA", "Either SFHA"),
   Population = c(
-    comma(state_summary$P1_001N),
+    comma(state_summary$p1_001n),
     paste0(comma(state_summary$pop_sfha), " (", comma(state_summary$pop_sfha_low), " - ", comma(state_summary$pop_sfha_high), ")"),
     paste0(comma(state_summary$pop_best_sfha), " (", comma(state_summary$pop_best_sfha_low), " - ", comma(state_summary$pop_best_sfha_high), ")"),
     paste0(comma(state_summary$pop_either_sfha), " (", comma(state_summary$pop_either_sfha_low), " - ", comma(state_summary$pop_either_sfha_high), ")")
   ),
   `Total Housing Units` = c(
-    comma(state_summary$H1_001N),
+    comma(state_summary$h1_001n),
     comma(state_summary$tot_hu_sfha),
     comma(state_summary$tot_hu_best_sfha),
     comma(state_summary$tot_hu_either_sfha)
   ),
   `Occupied Housing Units` = c(
-    comma(state_summary$H1_002N),
+    comma(state_summary$h1_002n),
     paste0(comma(state_summary$occ_hu_sfha), " (", comma(state_summary$occ_hu_sfha_low), " - ", comma(state_summary$occ_hu_sfha_high), ")"),
     paste0(comma(state_summary$occ_hu_best_sfha), " (", comma(state_summary$occ_hu_best_sfha_low), " - ", comma(state_summary$occ_hu_best_sfha_high), ")"),
     paste0(comma(state_summary$occ_hu_either_sfha), " (", comma(state_summary$occ_hu_either_sfha_low), " - ", comma(state_summary$occ_hu_either_sfha_high), ")")
@@ -156,10 +154,10 @@ factorial_table %>%
 
 # Supplementary Table 2
 state_pop_table <- state_summary_table %>% 
-  select(NAME, P1_001N:occ_hu_either_sfha_high) %>% 
+  select(name, p1_001n:occ_hu_either_sfha_high) %>% 
   arrange(-pop_either_sfha) %>% 
-  transmute(State = NAME,
-            `Total population` = comma(P1_001N),
+  transmute(State = name,
+            `Total population` = comma(p1_001n),
             `Population in SFHA` = paste0(comma(pop_sfha), " (", comma(pop_sfha_low), " - ", comma(pop_sfha_high), ")"),
             `Population in best-available SFHA` = paste0(comma(pop_best_sfha), " (", comma(pop_best_sfha_low), " - ", comma(pop_best_sfha_high), ")"),
             `Population in either SFHA` = paste0(comma(pop_either_sfha), " (", comma(pop_either_sfha_low), " - ", comma(pop_either_sfha_high), ")")
@@ -170,10 +168,10 @@ state_pop_table %>%
 
 # Supplementary Table 3
 state_tot_hu_table <- state_summary_table %>% 
-  select(NAME, P1_001N:occ_hu_either_sfha_high) %>% 
+  select(name, p1_001n:occ_hu_either_sfha_high) %>% 
   arrange(-tot_hu_either_sfha) %>% 
-  transmute(State = NAME,
-            `Total housing units` = comma(H1_001N),
+  transmute(State = name,
+            `Total housing units` = comma(h1_001n),
             `Total housing units in SFHA` = paste0(comma(tot_hu_sfha)),
             `Total housing units in best-available SFHA` = paste0(comma(tot_hu_best_sfha)),
             `Total housing units in either SFHA` = paste0(comma(tot_hu_either_sfha))
@@ -184,10 +182,10 @@ state_tot_hu_table %>%
 
 # Supplementary Table 4
 state_occ_hu_table <- state_summary_table %>% 
-  select(NAME, P1_001N:occ_hu_either_sfha_high) %>% 
+  select(name, p1_001n:occ_hu_either_sfha_high) %>% 
   arrange(-pop_either_sfha) %>% 
-  transmute(State = NAME,
-            `Occupied housing units` = comma(H1_002N),
+  transmute(State = name,
+            `Occupied housing units` = comma(h1_002n),
             `Occupied housing units in SFHA` = paste0(comma(occ_hu_sfha), " (", comma(occ_hu_sfha_low), " - ", comma(occ_hu_sfha_high), ")"),
             `Occupied housing units in best-available SFHA` = paste0(comma(occ_hu_best_sfha), " (", comma(occ_hu_best_sfha_low), " - ", comma(occ_hu_best_sfha_high), ")"),
             `Occupied housing units in either SFHA` = paste0(comma(occ_hu_either_sfha), " (", comma(occ_hu_either_sfha_low), " - ", comma(occ_hu_either_sfha_high), ")")
@@ -198,7 +196,7 @@ state_occ_hu_table %>%
 
 
 # Supplementary Table 1 
-state_res_or_not <- readr::read_csv(file.path(results_path, "census/summaries/state_res_or_not_summary.csv"))
+state_res_or_not <- readr::read_csv(file.path(results_path, "fp_summaries/summary_csvs/state_res_or_not_summary.csv"))
 
 source_table <- state_res_or_not %>% 
   group_by(res_or_not) %>% 

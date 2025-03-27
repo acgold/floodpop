@@ -7,6 +7,7 @@ library(arrow)
 library(extrafont)
 library(foreach)
 library(tictoc)
+library(clipr)
 
 ############### Set paths ##################
 results_path = "your_results_path"
@@ -95,6 +96,14 @@ buildings_to_blocks <- function(state_name, variables = c("P1_001N", "H1_001N", 
   setnames(reshaped_either_area, c("0", "1"), c("out_either_sfha_area", "within_either_sfha_area"))
   reshaped_either_area[, ratio_area_either_sfha := within_either_sfha_area / (within_either_sfha_area + out_either_sfha_area)]
   
+  # Make sure that the "best available" sfha estimates are not lower than the "sfha" estimates, 
+  # which can occur if the SFHA intersects homes but they are for some reason outside the study bounds - this is rare but can happen 
+  reshaped_best_sfha_area[reshaped_sfha_area, 
+                          on = .(GEOID20), 
+                          `:=`(out_best_sfha_area = fifelse(ratio_area_best_sfha < ratio_area_sfha, out_sfha_area, out_best_sfha_area),
+                               within_best_sfha_area = fifelse(ratio_area_best_sfha < ratio_area_sfha, within_sfha_area, within_best_sfha_area),
+                               ratio_area_best_sfha = fifelse(ratio_area_best_sfha < ratio_area_sfha, ratio_area_sfha, ratio_area_best_sfha))]
+  
   combined_cb_area <- merge(reshaped_sfha_area, reshaped_est_sfha_area, by = "GEOID20", all = TRUE)
   combined_cb_area <- merge(combined_cb_area, reshaped_best_sfha_area, by = "GEOID20", all = TRUE)
   combined_cb_area <- merge(combined_cb_area, reshaped_either_area, by = "GEOID20", all = TRUE)
@@ -135,7 +144,7 @@ buildings_to_blocks <- function(state_name, variables = c("P1_001N", "H1_001N", 
 
            occ_hu_sfha = round(H1_002N * ratio_area_sfha),
            occ_hu_sfha_low = round(CI_LOW_HU * ratio_area_sfha),
-           occ_hu_sfha_high = round(CI_LOW_HU * ratio_area_sfha),
+           occ_hu_sfha_high = round(CI_HIGH_HU * ratio_area_sfha),
            occ_hu_best_sfha = round(H1_002N * ratio_area_best_sfha),
            occ_hu_best_sfha_low = round(CI_LOW_HU * ratio_area_best_sfha),
            occ_hu_best_sfha_high = round(CI_HIGH_HU * ratio_area_best_sfha),
@@ -147,22 +156,25 @@ buildings_to_blocks <- function(state_name, variables = c("P1_001N", "H1_001N", 
   
   state_cb[is.na(state_cb)] <- 0
   
+  state_cb <- state_cb %>% 
+    select(state, GEOID20, GEOIDFQ20, SUFFIX, NAME, ALAND, AWATER, INTPTLAT, INTPTLON, SHAPE_Length, SHAPE_Area, out_sfha_area, within_sfha_area, ratio_area_sfha, out_est_sfha_area, within_est_sfha_area, ratio_area_est_sfha, out_best_sfha_area, within_best_sfha_area, ratio_area_best_sfha, out_either_sfha_area, within_either_sfha_area, ratio_area_either_sfha, P1_001N, H1_001N, H1_002N, CI_LOW, CI_HIGH, CI_LOW_HU, CI_HIGH_HU, pop_sfha, pop_sfha_low, pop_sfha_high, pop_best_sfha, pop_best_sfha_low, pop_best_sfha_high, pop_either_sfha, pop_either_sfha_low, pop_either_sfha_high, tot_hu_sfha, tot_hu_best_sfha, tot_hu_either_sfha, occ_hu_sfha, occ_hu_sfha_low, occ_hu_sfha_high, occ_hu_best_sfha, occ_hu_best_sfha_low, occ_hu_best_sfha_high, occ_hu_either_sfha, occ_hu_either_sfha_low, occ_hu_either_sfha_high) %>% 
+    janitor::clean_names()
+  
+  # Write to state gdb
   state_cb %>% 
-    sf::st_write(dsn = file.path(results_path, "census/blocks.gdb"), layer = "blocks_floodpop", append = T)
+    sf::st_write(dsn = file.path(results_path, "fp_summaries/blocks_by_state.gdb"), layer = paste0(state_name, "_blocks_fp"), append = F)
   
-  
-  if(file.exists(file.path(results_path, "census/summaries/block_summary.csv"))){
+  if(file.exists(file.path(results_path, "fp_summaries/summary_csvs/block_summary.csv"))){
     state_cb %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/block_summary.csv"), append=T)
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/block_summary.csv"), append=T)
     
   }else{
     state_cb %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/block_summary.csv"), append=F)
-    
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/block_summary.csv"), append=F)
   }
   
   return(state_cb)
@@ -172,7 +184,7 @@ blocks_to_tracts <- function(state_cb, state_name){
   tracts <- state_cb %>%
     as_tibble() %>%
     select(-SHAPE) %>%
-    mutate(tract = stringr::str_sub(GEOID20, 1, -5)) %>%
+    mutate(tract = stringr::str_sub(geoid20, 1, -5)) %>%
     group_by(tract) %>%
     summarize(
       pop_sfha = sum(pop_sfha, na.rm = T),
@@ -213,23 +225,25 @@ blocks_to_tracts <- function(state_cb, state_name){
     filter(GEOID %in% tract_data$GEOID) %>% 
     left_join(tract_data) %>% 
     left_join(tracts, by = c("GEOID" = "tract")) %>% 
-    select(-SHAPE, SHAPE)
+    janitor::clean_names() %>% 
+    select(-SHAPE, SHAPE) %>% 
+    sf::st_transform(sf::st_crs(state_cb))
   
   state_tracts %>% 
-    sf::st_write(dsn = file.path(results_path, "census/tracts.gdb"), layer = "tracts_floodpop", append = T)
+    sf::st_write(dsn = file.path(results_path, "fp_summaries/summaries.gdb"), layer = "tracts_fp", append = T)
   
   
-  if(file.exists(file.path(results_path, "census/summaries/tracts_summary.csv"))){
+  if(file.exists(file.path(results_path, "fp_summaries/summary_csvs/tract_summary.csv"))){
     state_tracts %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/tracts_summary.csv"), append=T)
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/tract_summary.csv"), append=T)
     
   }else{
     state_tracts %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/tracts_summary.csv"), append=F)
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/tract_summary.csv"), append=F)
   }
   
 }
@@ -239,7 +253,7 @@ blocks_to_counties <- function(state_cb, state_name){
   counties <- state_cb %>%
     as_tibble() %>%
     select(-SHAPE) %>%
-    mutate(county = stringr::str_sub(GEOID20, 1, 5)) %>%
+    mutate(county = stringr::str_sub(geoid20, 1, 5)) %>%
     group_by(county) %>%
     summarize(
       pop_sfha = sum(pop_sfha, na.rm = T),
@@ -280,23 +294,25 @@ blocks_to_counties <- function(state_cb, state_name){
     filter(GEOID %in% county_data$GEOID) %>% 
     left_join(county_data) %>% 
     left_join(counties, by = c("GEOID" = "county")) %>% 
-    select(-SHAPE, SHAPE)
+    janitor::clean_names() %>% 
+    select(-SHAPE, SHAPE) %>% 
+    sf::st_transform(sf::st_crs(state_cb))
   
   county_geo %>% 
-    sf::st_write(dsn = file.path(results_path, "census/counties.gdb"), layer = "counties_floodpop", append = T)
+    sf::st_write(dsn = file.path(results_path, "fp_summaries/summaries.gdb"), layer = "counties_fp", append = T)
   
   
-  if(file.exists(file.path(results_path, "census/summaries/county_summary.csv"))){
+  if(file.exists(file.path(results_path, "fp_summaries/summary_csvs/county_summary.csv"))){
     county_geo %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/county_summary.csv"), append=T)
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/county_summary.csv"), append=T)
     
   }else{
     county_geo %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/county_summary.csv"), append=F)
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/county_summary.csv"), append=F)
   }
   
 }
@@ -306,7 +322,7 @@ blocks_to_states <- function(state_cb, state_name){
   states <- state_cb %>%
     as_tibble() %>%
     select(-SHAPE) %>%
-    mutate(state_fips = stringr::str_sub(GEOID20, 1, 2)) %>%
+    mutate(state_fips = stringr::str_sub(geoid20, 1, 2)) %>%
     group_by(state_fips) %>%
     summarize(
       pop_sfha = sum(pop_sfha, na.rm = T),
@@ -346,24 +362,25 @@ blocks_to_states <- function(state_cb, state_name){
     filter(GEOID %in% state_data$GEOID) %>% 
     left_join(state_data) %>% 
     left_join(states, by = c("GEOID" = "state_fips")) %>% 
-    select(-SHAPE, SHAPE)
-  
+    janitor::clean_names() %>% 
+    select(-SHAPE, SHAPE) %>% 
+    sf::st_transform(sf::st_crs(state_cb))
   
   state_geo %>% 
-    sf::st_write(dsn = file.path(results_path, "census/states.gdb"), layer = "states_floodpop", append = T)
+    sf::st_write(dsn = file.path(results_path, "fp_summaries/summaries.gdb"), layer = "states_fp", append = T)
   
   
-  if(file.exists(file.path(results_path, "census/summaries/state_summary.csv"))){
+  if(file.exists(file.path(results_path, "fp_summaries/summary_csvs/state_summary.csv"))){
     state_geo %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/state_summary.csv"), append=T)
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/state_summary.csv"), append=T)
     
   }else{
     state_geo %>% 
       as_tibble() %>% 
       select(-SHAPE) %>% 
-      readr::write_csv(file.path(results_path, "census/summaries/state_summary.csv"), append=F)
+      readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/state_summary.csv"), append=F)
   }
   
 }
@@ -401,7 +418,7 @@ source_summary_all <- foreach(i = state_names, .combine = "bind_rows") %do% {
 }
 
 source_summary_all %>% 
-  readr::write_csv(file.path(results_path, "census/summaries/state_res_or_not_summary.csv"), append=F)
+  readr::write_csv(file.path(results_path, "fp_summaries/summary_csvs/state_res_or_not_summary.csv"), append=F)
 
 
 source_summary_all %>% 
@@ -421,34 +438,34 @@ source_summary_all %>%
 
 
 ############### Read summary tables ################
-state_summary_table <- readr::read_csv(file.path(results_path, "census/summaries/state_summary.csv"))
-county_summary_table <- readr::read_csv(file.path(results_path, "census/summaries/county_summary.csv"))
-tract_summary_table <- readr::read_csv(file.path(results_path, "census/summaries/tracts_summary.csv"))
-block_summary_table <- readr::read_csv(file.path(results_path, "census/summaries/block_summary.csv"))
+state_summary_table <- readr::read_csv(file.path(results_path, "fp_summaries/summary_csvs/state_summary.csv"))
+county_summary_table <- readr::read_csv(file.path(results_path, "fp_summaries/summary_csvs/county_summary.csv"))
+tract_summary_table <- readr::read_csv(file.path(results_path, "fp_summaries/summary_csvs/tract_summary.csv"))
+block_summary_table <- readr::read_csv(file.path(results_path, "fp_summaries/summary_csvs/block_summary.csv"))
 
 ############ Create Cartographic summaries #####################
 cart_tracts <- sf::st_read(file.path(data_path, "census/cartographic/cb_2020_us_all_500k.gdb"), layer = "cb_2020_us_tract_500k") %>% 
   left_join(tract_summary_table %>% 
-              select(GEOID, state, P1_001N:occ_hu_either_sfha_high)) %>% 
+              select(geoid, state, p1_001n:occ_hu_either_sfha_high), by = c("GEOID" = "geoid")) %>% 
   sf::st_transform(crs = "ESRI:102039")
 
 cart_tracts %>% 
-  sf::st_write(file.path(results_path, "census/cartographic/cartographic.gdb"), layer = "carto_tracts", append = F)
+  sf::st_write(file.path(results_path, "fp_summaries/cartographic.gdb"), layer = "carto_tracts_fp", append = F)
 
 
 cart_counties <- sf::st_read(file.path(data_path, "census/cartographic/cb_2020_us_all_5m.gdb"), layer = "cb_2020_us_county_5m") %>% 
   right_join(county_summary_table %>% 
-              select(GEOID, P1_001N:occ_hu_either_sfha_high)) %>% 
+              select(geoid, p1_001n:occ_hu_either_sfha_high), by = c("GEOID" = "geoid")) %>% 
   sf::st_transform(crs = "ESRI:102039")
 
 cart_counties %>% 
-  sf::st_write(file.path(results_path, "census/cartographic/cartographic.gdb"), layer = "carto_counties", append = F)
+  sf::st_write(file.path(results_path, "fp_summaries/cartographic.gdb"), layer = "carto_counties_fp", append = F)
 
 
-cart_states <- sf::st_read("D:/wotus_wetlands_downstream/data/census/cartographic/cb_2020_us_all_5m.gdb", layer = "cb_2020_us_state_5m") %>% 
+cart_states <- sf::st_read(file.path(data_path, "census/cartographic/cb_2020_us_all_5m.gdb"), layer = "cb_2020_us_state_5m") %>% 
   right_join(state_summary_table %>% 
-               select(GEOID, P1_001N:occ_hu_either_sfha_high)) %>% 
+               select(geoid, p1_001n:occ_hu_either_sfha_high), by = c("GEOID" = "geoid")) %>% 
   sf::st_transform(crs = "ESRI:102039")
 
 cart_states %>% 
-  sf::st_write(file.path(results_path,"census/cartographic/cartographic.gdb"), layer = "carto_states", append = F)
+  sf::st_write(file.path(results_path,"fp_summaries/cartographic.gdb"), layer = "carto_states_fp", append = F)

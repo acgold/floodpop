@@ -8,6 +8,7 @@ This repository presents a workflow to create estimates of the US population liv
     - `download_usa_structures.ipynb`: Download [FEMA's USA Structures database](https://disasters.geoplatform.gov/USA_Structures/) by state to an Esri File Geodatabase.
     - `download_nsi.ipynb`: Download [USACE's National Structure Inventory](https://www.hec.usace.army.mil/confluence/nsi) by state to an Esri File Geodatabase.
     - `download_nfhl.ipynb`: Download [FEMA regulatory floodplain](https://www.fema.gov/flood-maps/national-flood-hazard-layer) for all US counties.
+    - `get_nfhl_footprints.ipynb`: Creates a national layer of FEMA study footprints.
     - There are other datasets that are not downloaded programattically. These include:
         - 2020 decennial Census data ([link](https://www.census.gov/programs-surveys/decennial-census/decade/2020/2020-census-results.html))
         - The estimated 100-year floodplain ([link](https://www.sciencedirect.com/science/article/pii/S0048969718328481))
