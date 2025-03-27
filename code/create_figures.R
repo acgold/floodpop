@@ -30,10 +30,6 @@ coords <- matrix(c(
 # Create an sf object with the defined CRS "ESRI:102039"
 polygon_sf <- st_sfc(st_polygon(list(coords)), crs = "ESRI:102039")
 
-# counties <- sf::st_read(file.path(results_path, "census/counties.gdb"), layer = "counties_floodpop") %>% 
-#   sf::st_transform(crs = "ESRI:102039")
-
-
 ################## Figure 1 maps ###############
 ## County
 num_bins <- 8
