@@ -58,7 +58,6 @@ source_summary <- function(state_name){
   source_summary_df
 }
 
-# Add fema model or not to buiildings_to_blocks
 buildings_to_blocks <- function(state_name, variables = c("P1_001N", "H1_001N", "H1_002N")){
   cat("Working on ", state_name, "\n")
   cat("- Reading in structures \n")
